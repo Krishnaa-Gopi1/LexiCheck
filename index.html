@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LexiCheck — Auto Spell Corrector</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink:    #0d0d0d;
+      --paper:  #f5f0e8;
+      --cream:  #ede8db;
+      --warm:   #d9d0c0;
+      --accent: #c04a2f;
+      --ok:     #2e7d56;
+      --warn:   #c07a1f;
+      --mono:   'DM Mono', monospace;
+      --serif:  'DM Serif Display', serif;
+      --sans:   'Outfit', sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    header {
+      background: var(--ink);
+      padding: 16px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky; top: 0; z-index: 99;
+    }
+    .logo {
+      font-family: var(--serif);
+      font-size: 1.6rem;
+      color: var(--paper);
+      display: flex; align-items: center; gap: 10px;
+    }
+    .logo-dot {
+      width: 30px; height: 30px;
+      background: var(--accent);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem; color: #fff;
+      flex-shrink: 0;
+    }
+    .header-tag {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      background: rgba(255,255,255,0.1);
+      color: #ccc;
+      padding: 4px 12px;
+      border-radius: 50px;
+      letter-spacing: 0.6px;
+    }
+
+    /* PIPELINE */
+    .pipeline-bar {
+      background: var(--cream);
+      border-bottom: 2px solid var(--warm);
+      padding: 10px 40px;
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+    }
+    .ps {
+      display: flex; align-items: center; gap: 7px;
+      font-family: var(--mono);
+      font-size: 0.68rem; font-weight: 500;
+      letter-spacing: 0.5px; white-space: nowrap;
+    }
+    .ps .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .parrow {
+      width: 28px; height: 2px;
+      background: var(--warm);
+      position: relative; flex-shrink: 0;
+    }
+    .parrow::after {
+      content: '';
+      position: absolute; right: 0; top: -4px;
+      border: 5px solid transparent;
+      border-left-color: var(--warm);
+    }
+
+    /* LAYOUT */
+    .workspace {
+      flex: 1;
+      max-width: 980px;
+      margin: 0 auto;
+      width: 100%;
+      padding: 32px 40px 60px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media(max-width:720px) {
+      .workspace { grid-template-columns: 1fr; padding: 20px; }
+      header, .pipeline-bar { padding-left: 20px; padding-right: 20px; }
+    }
+
+    /* PANELS */
+    .panel {
+      background: #fff;
+      border: 2px solid var(--ink);
+      box-shadow: 4px 4px 0 var(--ink);
+    }
+    .panel-header {
+      background: var(--ink);
+      color: var(--paper);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      font-weight: 500;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      padding: 9px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .panel-body { padding: 20px; }
+
+    /* TEXTAREA */
+    #text-input {
+      width: 100%;
+      min-height: 220px;
+      font-family: var(--mono);
+      font-size: 0.95rem;
+      line-height: 1.8;
+      background: var(--paper);
+      border: 1.5px solid var(--warm);
+      padding: 14px;
+      resize: vertical;
+      outline: none;
+      color: var(--ink);
+      transition: border-color 0.2s;
+    }
+    #text-input:focus { border-color: var(--ink); }
+
+    /* FILE DROP */
+    .drop-zone {
+      border: 2px dashed var(--warm);
+      padding: 13px;
+      text-align: center;
+      cursor: pointer;
+      font-size: 0.82rem;
+      color: #999;
+      background: var(--paper);
+      transition: all 0.2s;
+      margin-top: 12px;
+    }
+    .drop-zone:hover, .drop-zone.over {
+      border-color: var(--accent);
+      background: #fff5f3;
+      color: var(--accent);
+    }
+    #file-input { display: none; }
+    #file-name { font-family: var(--mono); font-size: 0.74rem; color: var(--ok); margin-top: 4px; }
+
+    /* LIVE PILL */
+    .live-pill {
+      display: flex; align-items: center; gap: 6px;
+      font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.5px;
+    }
+    .live-dot {
+      width: 7px; height: 7px; border-radius: 50%; background: var(--ok);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100%{ opacity:1; transform:scale(1); }
+      50%{ opacity:0.5; transform:scale(1.3); }
+    }
+
+    /* STATS */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4,1fr);
+      gap: 1px;
+      background: var(--warm);
+      border: 1.5px solid var(--warm);
+      margin-bottom: 16px;
+    }
+    .stat { background: var(--paper); padding: 10px 8px; text-align: center; }
+    .stat .n { font-family: var(--serif); font-size: 1.5rem; line-height: 1; }
+    .stat .l { font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.8px;
+               text-transform: uppercase; color: #888; margin-top: 2px; }
+    .stat.red .n { color: var(--accent); }
+    .stat.grn .n { color: var(--ok); }
+    .stat.yel .n { color: var(--warn); }
+
+    /* CORRECTED BOX */
+    .corrected-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--ok);
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .corrected-box {
+      background: #f0fff6;
+      border: 2px solid var(--ok);
+      padding: 15px;
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      line-height: 1.9;
+      min-height: 70px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      color: var(--ink);
+      margin-bottom: 18px;
+    }
+
+    /* TABS */
+    .tabs { display: flex; border-bottom: 2px solid var(--warm); margin-bottom: 14px; }
+    .tab {
+      padding: 8px 15px;
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      background: none;
+      border: none;
+      border-bottom: 3px solid transparent;
+      color: #999;
+      margin-bottom: -2px;
+      transition: all 0.15s;
+    }
+    .tab.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+    .tab-panel { display: none; }
+    .tab-panel.on { display: block; }
+
+    /* ANNOTATED */
+    .annotated {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      line-height: 2;
+      word-wrap: break-word;
+      min-height: 60px;
+    }
+    .w-ok   { color: var(--ink); }
+    .w-err  { color: var(--accent); border-bottom: 2px wavy var(--accent); cursor: help; }
+    .w-warn { color: var(--warn);   border-bottom: 2px wavy var(--warn);   cursor: help; }
+    .w-punc { color: #bbb; }
+
+    .legend {
+      display: flex; gap: 14px; flex-wrap: wrap;
+      margin-top: 10px;
+      font-family: var(--mono); font-size: 0.68rem; color: #999;
+    }
+    .legend span { display: flex; align-items: center; gap: 5px; }
+    .leg-dot { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+
+    /* TOKEN TABLE */
+    .tok-table { width: 100%; border-collapse: collapse; font-size: 0.78rem; }
+    .tok-table thead th {
+      font-family: var(--mono); font-size: 0.62rem;
+      letter-spacing: 1px; text-transform: uppercase;
+      background: var(--ink); color: var(--paper);
+      padding: 7px 10px; text-align: left;
+    }
+    .tok-table tbody tr { border-bottom: 1px solid var(--cream); }
+    .tok-table tbody tr:hover { background: var(--cream); }
+    .tok-table td { padding: 6px 10px; font-family: var(--mono); }
+    .badge {
+      display: inline-block; padding: 2px 9px;
+      border-radius: 50px; font-size: 0.64rem;
+      font-family: var(--mono); font-weight: 600; letter-spacing: 0.4px;
+    }
+    .b-ok  { background: #d4edda; color: var(--ok); }
+    .b-err { background: #fde8e8; color: var(--accent); }
+    .b-typ { background: var(--cream); color: var(--ink); border: 1px solid var(--warm); }
+
+    /* SUGGESTIONS */
+    .sugg-list { display: flex; flex-direction: column; gap: 8px; }
+    .sugg-item {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 14px; background: var(--paper);
+      border-left: 4px solid var(--accent);
+    }
+    .sugg-item.grammar { border-left-color: var(--warn); }
+    .sugg-word {
+      font-family: var(--mono); font-size: 0.92rem;
+      color: var(--accent); min-width: 90px; font-weight: 600;
+    }
+    .sugg-word.grammar { color: var(--warn); }
+    .sugg-body { flex: 1; }
+    .sugg-meta {
+      font-family: var(--mono); font-size: 0.61rem;
+      color: #aaa; letter-spacing: 0.6px; text-transform: uppercase; margin-bottom: 5px;
+    }
+    .sugg-chips { display: flex; gap: 5px; flex-wrap: wrap; }
+    .chip {
+      padding: 3px 11px; background: #fff;
+      border: 1.5px solid var(--ink);
+      font-family: var(--mono); font-size: 0.74rem;
+      cursor: pointer; transition: all 0.1s;
+      box-shadow: 2px 2px 0 var(--warm);
+    }
+    .chip:hover {
+      background: var(--ink); color: var(--paper);
+      box-shadow: none; transform: translate(1px,1px);
+    }
+
+    /* COPY BTN */
+    .copy-btn {
+      padding: 4px 13px;
+      font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+      background: var(--ok); color: #fff;
+      border: none; cursor: pointer; letter-spacing: 0.4px;
+      transition: opacity 0.15s;
+    }
+    .copy-btn:hover { opacity: 0.82; }
+
+    /* EMPTY / PLACEHOLDER */
+    .placeholder-panel {
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      min-height: 340px;
+      font-family: var(--mono); font-size: 0.85rem;
+      color: #ccc; text-align: center; gap: 10px;
+    }
+    .placeholder-panel .big { font-size: 3rem; }
+    .empty {
+      text-align: center; padding: 36px 16px;
+      color: #bbb; font-family: var(--mono); font-size: 0.82rem;
+    }
+    .empty-icon { font-size: 2.2rem; margin-bottom: 8px; }
+
+    footer {
+      background: var(--ink); color: #777;
+      padding: 14px 40px;
+      font-family: var(--mono); font-size: 0.68rem;
+      display: flex; justify-content: space-between;
+      align-items: center; flex-wrap: wrap; gap: 6px;
+      border-top: 2px solid #222;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .fade { animation: fadeIn 0.25s ease both; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-dot">✦</div>
+    LexiCheck
+  </div>
+  <span class="header-tag">COMPILER-BASED ENGINE · AUTO-CORRECT</span>
+</header>
+
+<div class="pipeline-bar">
+  <div class="ps"><span class="dot" style="background:#c04a2f"></span>INPUT</div>
+  <div class="parrow"></div>
+  <div class="ps"><span class="dot" style="background:#c07a1f"></span>LEXER</div>
+  <div class="parrow"></div>
+  <div class="ps"><span class="dot" style="background:#1a5f8a"></span>TOKENIZER</div>
+  <div class="parrow"></div>
+  <div class="ps"><span class="dot" style="background:#9b3fb5"></span>VALIDATOR</div>
+  <div class="parrow"></div>
+  <div class="ps"><span class="dot" style="background:#1a5f8a"></span>CORRECTOR</div>
+  <div class="parrow"></div>
+  <div class="ps"><span class="dot" style="background:#2e7d56"></span>OUTPUT</div>
+</div>
+
+<div class="workspace">
+
+  <!-- LEFT: INPUT -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <span>① INPUT</span>
+        <div class="live-pill">
+          <div class="live-dot"></div>
+          <span>LIVE — type to correct</span>
+        </div>
+      </div>
+      <div class="panel-body">
+        <textarea id="text-input"
+          placeholder="Start typing here… e.g. 'Ths is an exampel of speling erors.'"></textarea>
+
+        <div class="drop-zone" id="drop-zone"
+          onclick="document.getElementById('file-input').click()">
+          📄 Drop a <strong>.txt</strong> file or <u>click to upload</u>
+          <div id="file-name"></div>
+        </div>
+        <input type="file" id="file-input" accept=".txt,.text" />
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: OUTPUT -->
+  <div>
+    <div class="panel">
+      <div class="panel-header">
+        <span>② AUTO-CORRECTED OUTPUT</span>
+        <button class="copy-btn" id="copy-btn" onclick="copyResult()" style="display:none">⧉ COPY</button>
+      </div>
+      <div class="panel-body" id="output-body">
+        <div class="placeholder-panel">
+          <div class="big">✦</div>
+          <div>Start typing on the left</div>
+          <div style="font-size:0.72rem;color:#ddd">Corrections appear here instantly</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span>LexiCheck · Compiler-Based Spell Checker · Lexical Analysis + Levenshtein Distance</span>
+  <a href="https://github.com/" target="_blank">★ GitHub</a>
+</footer>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   LEXICHECK ENGINE
+   Pipeline: Lexer → Symbol Table → Validator → Corrector
+═══════════════════════════════════════════════════════ */
+
+/* ── DICTIONARY (Symbol Table) ──────────────────────── */
+const DICT = new Set(
+  `a able about above accept across act actually add admit almost along already also although
+   always am amount an and angry another answer any anything anyway appear april ask at
+   back bad bank be beautiful because been before began begin behind believe below between big
+   black blue body both break bring brown build but by
+   call came can cannot care carry caught certain change chapter children close come common
+   complete computer contain continue could country create
+   dad dark day dead dear deep describe did different difficult do does doing done door down
+   each early east easy eight either else end english enough even evening ever every everything
+   example except
+   face fact fall false family far feel feet fell few find first five fly for forget form found
+   four friend from front full fun
+   give go god gone good got great green group grow
+   had half happen hard has have he head hear heart help her here high him himself his home hope
+   hour house how however human hundred
+   idea if imagine important include instead interest into it its itself
+   just keep knew know
+   land large last late later laugh lead learn least left length less let letter life light like
+   line little live long look lost lot love low
+   machine made make man many may mean men might mind minute more morning most mother move much
+   music must my
+   name near need never new next night no north not nothing now number
+   of off often old on one only open or other our out over own
+   page pain past people perhaps picture place plan play point poor possible power present
+   problem put
+   question quick quickly quite
+   read real really reason red remember result right river road room run
+   sad said same saw say school sea seem self send sent set seven she short should show side
+   since six sleep slow small snow so some something sometimes son song soon sound south speak
+   start stay step still stop story strange strong such sun sure
+   take talk than that the their there they thing think this thought three through time to
+   together told too top touch toward tree true try turn two
+   under until up us use
+   very
+   want was watch water way we well went were what when where which while white who why will
+   with without word work world would write
+   year yes yet you young your
+   about actually after age ago all already and another any anyone anything anyway are around
+   as at away bad because been before being below between bit both by call can care come could
+   day did different do does done down during each early english enough even every everyone
+   feel few find first for from full get give goes good got great had happen have he help her
+   here him his how i if in is it its just keep know large last later learning left like little
+   long look make man may me meet might mine more most much my name never new next night not now
+   of off often on one only open or other our out over own particular people perhaps place plan
+   problem put question rather read really right same say see seem she should so some something
+   sometimes still such tell than that the their then there therefore they this those though
+   three through time to today together too toward understand until up use very was way we well
+   were what when where which while who why with work world would year yes yet you young your
+   able absent absorb abstract achieve acid acknowledge acquire action address adequate admire
+   advance advice affair affect afternoon agree aid alarm alive alphabet alternate amazing amuse
+   ancient angle animal announce attempt avoid balance bargain barrier battle behave benefit
+   bicycle border boundary bridge brief brilliant busy calendar camera campaign capable captain
+   career careful category cause celebrate ceiling challenge character charge charity chart
+   chemical choice choir circle citizen civil clear climate comfort commission complete comply
+   concern concrete confirm conscious consider consumer context convince correspond courage
+   course cover create criminal cultural customer damage dangerous debate declare defeat define
+   delay deliberate depend describe design detect develop diameter digital dilemma direct
+   disaster discipline distance distinguish drought economy edge educate effect either elaborate
+   electric eliminate emphasis employee encourage engine enormous error estimate ethical evaluate
+   eventually evolve examine except experience experiment explore failure famous favor feature
+   finance forest formal frequently fresh function general genuine global grant group guarantee
+   habit happiness harmony healthy hesitate history however human hungry ignore imagine incident
+   increase indicate instance interest interval journey judge jungle knowledge language legend
+   level limit literature local logic manage manner material mature measure mention method mirror
+   mission model modern moment moral natural necessary negative neither novel obtain official
+   oppose original ought overwhelm patient perfect permit person phrase planet plenty policy
+   popular positive practice prepare privacy profit program promise promote provide public
+   purpose puzzle quality quarter question raise reality recall receive recognize recover
+   religion rely remember renew repair research respond reveal route routine secure separate
+   sequence serious situation solve source spirit stage strategy strength strict structure
+   subject success suffer support symbol talent technology temporary tension therefore thorough
+   threat tradition travel treatment trust ultimate unique unless unusual update urgent valuable
+   variation vehicle venture version victory visible vital welcome whereas whether willing
+   witness worthy sentence sentences spelling spellings example examples error errors grammar
+   grammars correction corrections suggestion suggestions analyse analysis`
+    .trim()
+    .split(/\s+/)
+    .reduce((s, w) => {
+      const t = w.toLowerCase().replace(/[^a-z']/g, '');
+      if (t.length > 0) s.add(t);
+      return s;
+    }, new Set())
+);
+
+/* ── LEVENSHTEIN DISTANCE ────────────────────────────── */
+function editDist(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = [];
+  for (let i = 0; i <= m; i++) {
+    dp[i] = new Array(n + 1);
+    dp[i][0] = i;
+  }
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+/* ── SUGGESTIONS ─────────────────────────────────────── */
+function getSuggestions(word, limit) {
+  limit = limit || 5;
+  const w = word.toLowerCase();
+  const candidates = [];
+  DICT.forEach(function(d) {
+    if (Math.abs(d.length - w.length) > 3) return;
+    const dist = editDist(w, d);
+    if (dist > 0 && dist <= 3) candidates.push({ word: d, dist: dist });
+  });
+  candidates.sort(function(a, b) { return a.dist - b.dist; });
+  return candidates.slice(0, limit).map(function(c) { return c.word; });
+}
+
+/* ── LEXER ────────────────────────────────────────────── */
+function tokenize(text) {
+  const parts = text.match(/[A-Za-z']+|[0-9]+(?:[.,][0-9]+)*|[^A-Za-z0-9]/g) || [];
+  let pos = 0;
+  return parts.map(function(lexeme) {
+    let type;
+    if (/^\s+$/.test(lexeme))              type = 'WHITESPACE';
+    else if (/^[0-9]/.test(lexeme))        type = 'NUMBER';
+    else if (/^[A-Za-z']+$/.test(lexeme))  type = 'WORD';
+    else                                    type = 'PUNCTUATION';
+    const tok = { lexeme: lexeme, type: type, pos: pos, issue: 'ok', suggestions: [] };
+    pos += lexeme.length;
+    return tok;
+  });
+}
+
+/* ── CONFUSABLES ─────────────────────────────────────── */
+const CONFUSABLES = {
+  'their': ["there", "they're"],
+  'there': ["their", "they're"],
+  "they're": ['their', 'there'],
+  'your':  ["you're"],
+  "you're": ['your'],
+  'its':   ["it's"],
+  "it's":  ['its'],
+  'then':  ['than'],
+  'than':  ['then'],
+  'affect': ['effect'],
+  'effect': ['affect'],
+};
+
+/* ── VALIDATOR ───────────────────────────────────────── */
+function validate(tokens) {
+  const issues = [];
+  let prevWordLex = null;
+
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+
+    if (tok.type !== 'WORD') {
+      if (tok.type !== 'WHITESPACE') prevWordLex = null;
+      continue;
+    }
+
+    const raw = tok.lexeme;
+    const w   = raw.toLowerCase().replace(/\u2019/g, "'");
+
+    // Skip single letters and ALL-CAPS abbreviations
+    if (raw.length === 1 || /^[A-Z]{2,}$/.test(raw)) {
+      tok.issue = 'ok';
+      prevWordLex = w;
+      continue;
+    }
+
+    // Spell check
+    if (!DICT.has(w)) {
+      tok.suggestions = getSuggestions(w);
+      tok.issue = 'error';
+      issues.push({
+        type: 'spelling',
+        token: tok,
+        message: '"' + raw + '" not found in dictionary',
+        suggestions: tok.suggestions
+      });
+    } else {
+      tok.issue = 'ok';
+    }
+
+    // Confusable check
+    if (CONFUSABLES[w]) {
+      if (tok.issue === 'ok') tok.issue = 'warn';
+      issues.push({
+        type: 'grammar',
+        token: tok,
+        message: '"' + raw + '" — possible confusable with: ' + CONFUSABLES[w].join(' / '),
+        suggestions: CONFUSABLES[w]
+      });
+    }
+
+    // Repeated word
+    if (prevWordLex && prevWordLex === w) {
+      tok.issue = 'warn';
+      issues.push({
+        type: 'grammar',
+        token: tok,
+        message: 'Repeated word: "' + raw + '"',
+        suggestions: []
+      });
+    }
+
+    prevWordLex = w;
+  }
+  return issues;
+}
+
+/* ── AUTO-CORRECTOR ──────────────────────────────────── */
+function autoCorrect(tokens) {
+  // Map token objects → best suggestion
+  const corrMap = new Map();
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    if (tok.issue === 'error' && tok.suggestions.length > 0) {
+      // Preserve leading capitalisation
+      let fix = tok.suggestions[0];
+      const orig = tok.lexeme;
+      if (orig.length > 1 &&
+          orig[0] === orig[0].toUpperCase() &&
+          orig[0] !== orig[0].toLowerCase()) {
+        fix = fix.charAt(0).toUpperCase() + fix.slice(1);
+      }
+      corrMap.set(tok, fix);
+    }
+  }
+  return tokens.map(function(t) {
+    return corrMap.has(t) ? corrMap.get(t) : t.lexeme;
+  }).join('');
+}
+
+/* ── ESCAPE HTML ─────────────────────────────────────── */
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/* ── RENDER: ANNOTATED ───────────────────────────────── */
+function renderAnnotated(tokens) {
+  return tokens.map(function(tok) {
+    if (tok.type === 'WHITESPACE')  return tok.lexeme;
+    if (tok.type === 'PUNCTUATION') return '<span class="w-punc">' + esc(tok.lexeme) + '</span>';
+    if (tok.issue === 'error') {
+      const tip = tok.suggestions.length ? '→ ' + tok.suggestions[0] : 'no suggestion';
+      return '<span class="w-err" title="' + esc(tip) + '">' + esc(tok.lexeme) + '</span>';
+    }
+    if (tok.issue === 'warn') {
+      return '<span class="w-warn" title="Grammar notice">' + esc(tok.lexeme) + '</span>';
+    }
+    return '<span class="w-ok">' + esc(tok.lexeme) + '</span>';
+  }).join('');
+}
+
+/* ── RENDER: TOKEN TABLE ─────────────────────────────── */
+function renderTokenTable(tokens) {
+  const rows = tokens.filter(function(t) { return t.type !== 'WHITESPACE'; });
+  if (!rows.length) return '<div class="empty"><div class="empty-icon">📋</div>No tokens yet.</div>';
+  const trs = rows.map(function(t, i) {
+    const status = t.issue === 'error'
+      ? '<span class="badge b-err">ERROR</span>'
+      : '<span class="badge b-ok">OK</span>';
+    return '<tr><td>' + (i + 1) + '</td><td><code>' + esc(t.lexeme) + '</code></td>' +
+      '<td><span class="badge b-typ">' + t.type + '</span></td>' +
+      '<td>' + t.pos + '</td><td>' + status + '</td></tr>';
+  }).join('');
+  return '<div style="overflow-x:auto">' +
+    '<table class="tok-table"><thead><tr>' +
+    '<th>#</th><th>LEXEME</th><th>TYPE</th><th>POS</th><th>STATUS</th>' +
+    '</tr></thead><tbody>' + trs + '</tbody></table></div>';
+}
+
+/* ── RENDER: SUGGESTIONS ─────────────────────────────── */
+function renderSuggestions(issues) {
+  if (!issues.length) {
+    return '<div class="empty"><div class="empty-icon">✅</div>No issues — text looks perfect!</div>';
+  }
+  return '<div class="sugg-list">' + issues.map(function(iss) {
+    const isg = iss.type === 'grammar';
+    const chips = iss.suggestions.map(function(s) {
+      return '<span class="chip" onclick="applySugg(\'' +
+        esc(iss.token.lexeme).replace(/'/g,"&#39;") + '\',\'' +
+        esc(s).replace(/'/g,"&#39;") + '\')">' + esc(s) + '</span>';
+    }).join('');
+    return '<div class="sugg-item' + (isg ? ' grammar' : '') + '">' +
+      '<div class="sugg-word' + (isg ? ' grammar' : '') + '">' + esc(iss.token.lexeme) + '</div>' +
+      '<div class="sugg-body">' +
+        '<div class="sugg-meta">' + iss.type + ' · pos ' + iss.token.pos + '</div>' +
+        '<div style="font-size:0.82rem;color:#555;margin-bottom:6px">' + esc(iss.message) + '</div>' +
+        (chips ? '<div class="sugg-chips">' + chips + '</div>' : '') +
+      '</div></div>';
+  }).join('') + '</div>';
+}
+
+/* ── MAIN ENGINE ─────────────────────────────────────── */
+var _lastCorrected = '';
+
+function runEngine(text) {
+  if (!text.trim()) {
+    document.getElementById('output-body').innerHTML =
+      '<div class="placeholder-panel">' +
+      '<div class="big">✦</div>' +
+      '<div>Start typing on the left</div>' +
+      '<div style="font-size:0.72rem;color:#ddd">Corrections appear here instantly</div>' +
+      '</div>';
+    document.getElementById('copy-btn').style.display = 'none';
+    return;
+  }
+
+  const tokens   = tokenize(text);
+  const issues   = validate(tokens);
+  _lastCorrected = autoCorrect(tokens);
+
+  const words    = tokens.filter(function(t) { return t.type === 'WORD'; });
+  const errCnt   = words.filter(function(t) { return t.issue === 'error'; }).length;
+  const warnCnt  = issues.filter(function(i) { return i.type === 'grammar'; }).length;
+  const okCnt    = words.length - errCnt;
+
+  document.getElementById('copy-btn').style.display = 'inline-block';
+
+  document.getElementById('output-body').innerHTML =
+    // Stats
+    '<div class="stats-row fade">' +
+      '<div class="stat"><div class="n">' + words.length + '</div><div class="l">Words</div></div>' +
+      '<div class="stat grn"><div class="n">' + okCnt + '</div><div class="l">Correct</div></div>' +
+      '<div class="stat red"><div class="n">' + errCnt + '</div><div class="l">Errors</div></div>' +
+      '<div class="stat yel"><div class="n">' + warnCnt + '</div><div class="l">Warnings</div></div>' +
+    '</div>' +
+
+    // Corrected output — primary, always visible
+    '<div style="margin-bottom:18px" class="fade">' +
+      '<div class="corrected-label">✔ AUTO-CORRECTED OUTPUT</div>' +
+      '<div class="corrected-box">' + esc(_lastCorrected) + '</div>' +
+    '</div>' +
+
+    // Tabs
+    '<div class="tabs fade">' +
+      '<button class="tab on"  onclick="showTab(\'annotated\',this)">Annotated</button>' +
+      '<button class="tab"     onclick="showTab(\'tokens\',this)">Tokens</button>' +
+      '<button class="tab"     onclick="showTab(\'suggestions\',this)">Suggestions' +
+        (issues.length ? ' <span style="background:var(--accent);color:#fff;border-radius:50px;padding:1px 7px;font-size:0.6rem">' + issues.length + '</span>' : '') +
+      '</button>' +
+    '</div>' +
+
+    '<div class="tab-panel on fade" id="tp-annotated">' +
+      '<div class="annotated">' + renderAnnotated(tokens) + '</div>' +
+      '<div class="legend">' +
+        '<span><span class="leg-dot" style="background:var(--accent)"></span> spelling error (hover for fix)</span>' +
+        '<span><span class="leg-dot" style="background:var(--warn)"></span> grammar / style</span>' +
+      '</div>' +
+    '</div>' +
+
+    '<div class="tab-panel" id="tp-tokens">' + renderTokenTable(tokens) + '</div>' +
+    '<div class="tab-panel" id="tp-suggestions">' + renderSuggestions(issues) + '</div>';
+}
+
+/* ── TAB SWITCH ──────────────────────────────────────── */
+function showTab(id, el) {
+  var tabs = document.querySelectorAll('.tab');
+  var panels = document.querySelectorAll('.tab-panel');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('on');
+  for (var i = 0; i < panels.length; i++) panels[i].classList.remove('on');
+  el.classList.add('on');
+  var panel = document.getElementById('tp-' + id);
+  if (panel) panel.classList.add('on');
+}
+
+/* ── APPLY MANUAL SUGGESTION ─────────────────────────── */
+function applySugg(original, replacement) {
+  var ta = document.getElementById('text-input');
+  // Replace whole-word occurrences only
+  ta.value = ta.value.replace(
+    new RegExp('(?<![A-Za-z])' + original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![A-Za-z])', 'g'),
+    replacement
+  );
+  runEngine(ta.value);
+}
+
+/* ── COPY ────────────────────────────────────────────── */
+function copyResult() {
+  if (!_lastCorrected) return;
+  navigator.clipboard.writeText(_lastCorrected).then(function() {
+    var btn = document.getElementById('copy-btn');
+    btn.textContent = '✓ COPIED';
+    setTimeout(function() { btn.textContent = '⧉ COPY'; }, 1800);
+  });
+}
+
+/* ── DEBOUNCED INPUT WATCHER ─────────────────────────── */
+var _debounce = null;
+document.getElementById('text-input').addEventListener('input', function() {
+  clearTimeout(_debounce);
+  var val = this.value;
+  _debounce = setTimeout(function() { runEngine(val); }, 180);
+});
+
+/* ── FILE UPLOAD ─────────────────────────────────────── */
+var dropZone  = document.getElementById('drop-zone');
+var fileInput = document.getElementById('file-input');
+
+fileInput.addEventListener('change', function(e) { loadFile(e.target.files[0]); });
+
+dropZone.addEventListener('dragover',  function(e) { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', function()  { dropZone.classList.remove('over'); });
+dropZone.addEventListener('drop', function(e) {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+});
+
+function loadFile(file) {
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var ta = document.getElementById('text-input');
+    ta.value = e.target.result;
+    document.getElementById('file-name').textContent = '✓ ' + file.name;
+    runEngine(ta.value);
+  };
+  reader.readAsText(file);
+}
+</script>
+</body>
+</html>
